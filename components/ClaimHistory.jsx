@@ -1,0 +1,8 @@
+'use client';
+import { useState } from 'react';
+import { Button } from './ui';
+export default function ClaimHistory({ id }) {
+  const [detail, setDetail] = useState(null); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function load() { setBusy(true); try { const response = await fetch(`/api/rewards/${id}`, { cache: 'no-store' }); const data = await response.json(); if (!response.ok) throw new Error(data.error); setDetail(data); setError(''); } catch (error) { setError(error.message); } finally { setBusy(false); } }
+  return <div className="claim-history"><Button variant="secondary" disabled={busy} onClick={load}>{busy ? 'Loading…' : detail ? 'Refresh history' : 'View processing history'}</Button>{error && <p role="alert">{error}</p>}{detail && <><h3>Processing</h3><p>{detail.job ? `${detail.job.status} · ${detail.job.phase} · ${detail.job.attempts} worker attempts` : 'Waiting for administrator review; no job yet.'}</p>{detail.job?.providerRequestId && <p>VTPass request: {detail.job.providerRequestId}</p>}{detail.claim.providerCode && <p>Last provider code: {detail.claim.providerCode}</p>}<h3>Ledger</h3><ul>{detail.ledger.map(entry => <li key={entry._id}>{entry.kind} · ₦{entry.amountMinor / 100} · {new Date(entry.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Lagos' })}</li>)}</ul><h3>Latest events</h3>{detail.events.length ? <ul>{detail.events.map(event => <li key={event._id}>{event.action.replaceAll('_', ' ')} {event.outcome || ''} · {new Date(event.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Lagos' })}{event.reason && <p>{event.reason}</p>}</li>)}</ul> : <p>No processing events recorded yet.</p>}</>}</div>;
+}

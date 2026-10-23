@@ -1,0 +1,3 @@
+import { context, campaignFilter, sameOrigin, AppError, failure } from '@/lib/server/access.mjs';
+import { createCampaign } from '@/lib/server/campaigns.mjs';
+export async function POST(request, { params }) { try { sameOrigin(request); const ctx = await context(request.headers); const source = await ctx.db.collection('campaigns').findOne(campaignFilter(ctx, (await params).id)); if (!source) throw new AppError('Campaign not found.', 404); return Response.json(await createCampaign(ctx, { ...source.draft, name: `${source.draft.name} (copy)` }), { status: 201 }); } catch (error) { return failure(error); } }

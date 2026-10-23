@@ -1,0 +1,173 @@
+// Creates isolated fictional accounts, exercises real HTTP authorization, then removes only its own fixtures.
+import { randomUUID } from 'node:crypto';
+import { readFile, readdir, unlink } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { MongoClient } from 'mongodb';
+import { createPage } from '../lib/campaign-page.mjs';
+const origin = process.env.APP_URL;
+if (process.env.APP_MODE !== 'local' || !['127.0.0.1', 'localhost'].includes(new URL(origin).hostname)) throw new Error('Integration checks require local mode.');
+const client = await new MongoClient(process.env.MONGODB_URI).connect(); const db = client.db(process.env.MONGODB_DB);
+const users = [], organizations = [], emails = []; let checks = 0;
+function check(value, message) { assert.ok(value, message); checks++; }
+async function request(path, actor, input, method = input ? 'POST' : 'GET') {
+  const response = await fetch(origin + path, { method, headers: { Origin: origin, ...(actor?.cookie ? { Cookie: actor.cookie } : {}), ...(input ? { 'Content-Type': 'application/json' } : {}) }, body: input ? JSON.stringify(input) : undefined, redirect: 'manual' });
+  const raw = await response.text(); let data; try { data = JSON.parse(raw); } catch { data = raw; }
+  return { status: response.status, data, response };
+}
+async function account(label) {
+  const email = `qa-${label}-${randomUUID()}@example.test`; emails.push(email); const password = randomUUID() + '!Ab9';
+  const result = await request('/api/auth/sign-up/email', null, { name: `QA ${label}`, email, password });
+  assert.equal(result.status, 200, JSON.stringify(result.data)); users.push(result.data.user.id);
+  const cookie = result.response.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
+  check(!!cookie, 'Signup returns session cookie'); return { email, password, cookie, id: result.data.user.id };
+}
+async function organization(actor, label) {
+  const result = await request('/api/organizations', actor, { name: `QA ${label}` }); assert.equal(result.status, 201, JSON.stringify(result.data)); organizations.push(result.data._id);
+  actor.cookie += '; ' + result.response.headers.getSetCookie().map(c => c.split(';')[0]).join('; '); return result.data._id;
+}
+try {
+  check((await request('/api/campaigns')).status === 401, 'Anonymous campaign list is denied');
+  const a = await account('owner-a'), b = await account('owner-b'), manager = await account('manager');
+  await organization(a, 'Organization A'); await organization(b, 'Organization B');
+  const page = createPage('birthday'); page.name = 'QA birthday original'; page.actions = { reward: false, feedback: false, rsvp: false };
+  page.banner = `data:image/png;base64,${(await readFile('tests/fixtures/test-banner.png')).toString('base64')}`;
+  let result = await request('/api/campaigns', a, { page }); assert.equal(result.status, 201, JSON.stringify(result.data)); let record = result.data;
+  const path = `/api/campaigns/${record._id}`, publicPath = `/q/${record.code}`, originalCode = record.code, assetPath = record.draft.banner;
+  check(assetPath.startsWith('/api/assets/'), 'Photos move to private asset storage');
+  check((await request(assetPath)).status === 404, 'Anonymous access to draft photo denied');
+  check((await request(assetPath, b)).status === 404, 'Other organization cannot read draft photo');
+  check((await request(assetPath, a)).status === 200, 'Owner can preview draft photo');
+  check((await request('/api/platform', a)).status === 403, 'Organization owner has no implicit platform privilege');
+  check((await request(publicPath)).data.includes('currently unavailable'), 'Draft content stays private');
+  for (const suffix of ['', '/qr', '/qr?format=png']) check((await request(path + suffix, b)).status === 404, 'Cross-tenant read or export denied');
+  check((await request(path, b, { action: 'publish', revision: record.revision }, 'PATCH')).status === 404, 'Cross-tenant mutation denied');
+  const foreignOrigin = await fetch(origin + path, { method: 'PATCH', headers: { Cookie: a.cookie, Origin: 'https://wrong.example', 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'publish', revision: record.revision }) }); check(foreignOrigin.status === 403, 'Foreign origin blocked');
+  result = await request(path, a, { action: 'publish', revision: record.revision }, 'PATCH'); assert.equal(result.status, 200, JSON.stringify(result.data)); record = result.data;
+  check((await request(publicPath)).data.includes('QA birthday original'), 'Published page is available anonymously');
+  check((await request(assetPath)).status === 200, 'Active published photo is public');
+  await db.collection('platformRoles').insertOne({ userId: b.id, role: 'super_admin', status: 'active' });
+  check((await request('/api/platform', b)).status === 200, 'Explicit platform administrator can list organizations');
+  check((await request('/api/platform', b, { organizationId: organizations[0], status: 'suspended', reason: 'QA suspension verification' })).status === 200, 'Platform suspension succeeds');
+  check((await request(path, a)).status === 403, 'Organization suspension blocks owner session');
+  check((await request(assetPath)).status === 404, 'Organization suspension blocks public photos');
+  check((await request(publicPath)).data.includes('currently unavailable'), 'Organization suspension blocks published page');
+  await request('/api/platform', b, { organizationId: organizations[0], status: 'active', reason: 'QA restore after verification' });
+  check(await db.collection('platformAudit').countDocuments({ actorId: b.id }) >= 3, 'Privileged reads and changes are audited');
+  const qr = await request(path + '/qr', a); check(qr.status === 200 && qr.data.includes('<svg'), 'QR SVG export works');
+  const png = await request(path + '/qr?format=png', a); check(png.status === 200 && png.response.headers.get('content-type') === 'image/png', 'QR PNG export works');
+  const oldRevision = record.revision;
+  result = await request(path, a, { action: 'save', revision: record.revision, page: { ...page, name: 'QA birthday edited' } }, 'PATCH'); assert.equal(result.status, 200); record = result.data;
+  check(record.code === originalCode, 'QR code remains stable');
+  check((await request(publicPath)).data.includes('QA birthday original'), 'Unpublished edits do not alter live page');
+  check((await request(path, a, { action: 'save', revision: oldRevision, page }, 'PATCH')).status === 409, 'Stale edits rejected');
+  result = await request('/api/team', a, { email: manager.email, role: 'manager', status: 'active', campaignIds: [] }); assert.equal(result.status, 200, JSON.stringify(result.data));
+  check((await request(path, manager)).status === 404, 'Manager cannot read unassigned campaign');
+  await request('/api/team', a, { email: manager.email, role: 'manager', status: 'active', campaignIds: [record._id] });
+  check((await request(path, manager)).status === 200, 'Assigned manager can read campaign');
+  check((await request(path, manager, { action: 'publish', revision: record.revision }, 'PATCH')).status === 403, 'Manager cannot publish');
+  await request('/api/team', a, { email: manager.email, role: 'manager', status: 'suspended', campaignIds: [record._id] });
+  check((await request(path, manager)).status === 403, 'Suspended membership immediately blocks an existing session');
+  result = await request(path, a, { action: 'pause', revision: record.revision }, 'PATCH'); record = result.data;
+  check((await request(publicPath)).data.includes('currently unavailable'), 'Pause takes effect on public page');
+  check((await request(assetPath)).status === 404, 'Pausing page removes public asset access');
+  result = await request(path, a, { action: 'publish', revision: record.revision, startsAt: '2099-01-01T00:00:00Z' }, 'PATCH'); record = result.data;
+  check((await request(publicPath)).data.includes('currently unavailable'), 'Scheduled future page is unavailable');
+  result = await request(path, a, { action: 'archive', revision: record.revision }, 'PATCH'); record = result.data;
+  check((await request(path, a, { action: 'publish', revision: record.revision }, 'PATCH')).status === 409, 'Archived page cannot republish');
+  const duplicate = await request(path + '/duplicate', a, {}); check(duplicate.status === 201 && duplicate.data.code !== originalCode && duplicate.data.status === 'Draft', 'Archive can be duplicated into a private page with a new QR address');
+  check((await request(`/dashboard/campaigns/${duplicate.data._id}/print`, a)).data.includes('Print / Save as PDF'), 'Printable QR screen renders');
+  // Phase 4: public submission contract, immutable question versions and scoped review.
+  const formPage = createPage('birthday'); formPage.actions.reward = false;
+  formPage.forms.feedback.workflow = 'complaint';
+  formPage.forms.feedback.fields.push({ id: 'marketing', type: 'consent', label: 'Send optional news', purpose: 'marketing', required: false });
+  let formCampaign = (await request('/api/campaigns', a, { page: formPage })).data;
+  const formPath = '/api/campaigns/' + formCampaign._id;
+  const submitPath = '/api/public/campaigns/' + formCampaign.code + '/submissions';
+  const initialPayload = { action: 'feedback', publicationRevision: 1, idempotencyKey: randomUUID(), answers: { name: 'Fictional Guest', message: 'Please review this fictional complaint.', data_consent: true, marketing: false } };
+  check((await request(submitPath, null, initialPayload)).status === 409, 'Draft forms do not accept submissions');
+  formCampaign = (await request(formPath, a, { action: 'publish', revision: formCampaign.revision }, 'PATCH')).data;
+  initialPayload.publicationRevision = formCampaign.publishedRevision;
+  check((await request(submitPath, null, { ...initialPayload, answers: { ...initialPayload.answers, unknown: 'injected' } })).status === 422, 'Unknown answer fields rejected');
+  check((await request(submitPath, null, { ...initialPayload, answers: { ...initialPayload.answers, data_consent: false } })).status === 422, 'Data-use agreement required');
+  check((await request(submitPath, null, { ...initialPayload, answers: { ...initialPayload.answers, message: { injected: true } } })).status === 422, 'Malformed text answer rejected');
+  const duplicates = await Promise.all([request(submitPath, null, initialPayload), request(submitPath, null, initialPayload)]);
+  check(duplicates.every(r => r.status === 201) && duplicates[0].data.receipt === duplicates[1].data.receipt, 'Concurrent double-submit records one response');
+  const submissionId = duplicates[0].data.receipt, submissionPath = '/api/submissions/' + submissionId;
+  check(await db.collection('submissions').countDocuments({ campaignId: formCampaign._id }) === 1, 'No duplicate submission rows');
+  check((await request(submitPath, null, { ...initialPayload, answers: { ...initialPayload.answers, message: 'Different' } })).status === 409, 'Reusing request key with different answers rejected');
+  check((await request(submissionPath)).status === 401, 'Public users cannot read private submissions');
+  check((await request(submissionPath, b)).status === 404, 'Other organization cannot read submissions');
+  check((await request('/api/submissions?campaign=' + formCampaign._id, b)).status === 404, 'Other organization cannot list submissions for a foreign campaign');
+  check((await request(submissionPath, b, { revision: 1, status: 'resolved', note: 'No permission' }, 'PATCH')).status === 404, 'Other organization cannot review submissions');
+  let detail = (await request(submissionPath, a)).data;
+  check(detail.consent.find(c => c.purpose === 'marketing').accepted === false, 'Declining marketing does not block complaint');
+  const originalLabel = detail.form.fields.find(f => f.id === 'message').label;
+  const updatedPage = structuredClone(formCampaign.draft); updatedPage.forms.feedback.fields.find(f => f.id === 'message').label = 'Changed question for future respondents';
+  formCampaign = (await request(formPath, a, { action: 'save', revision: formCampaign.revision, page: updatedPage }, 'PATCH')).data;
+  check((await request(submitPath, null, { ...initialPayload, idempotencyKey: randomUUID() })).status === 201, 'Draft form edits do not change live submission schema');
+  formCampaign = (await request(formPath, a, { action: 'publish', revision: formCampaign.revision }, 'PATCH')).data;
+  check((await request(submitPath, null, { ...initialPayload, idempotencyKey: randomUUID() })).status === 409, 'Stale published form version rejected');
+  detail = (await request(submissionPath, a)).data;
+  check(detail.form.fields.find(f => f.id === 'message').label === originalLabel, 'Old submissions preserve original questions');
+  check((await request(submissionPath, a, { revision: 1, status: 'resolved', note: '' }, 'PATCH')).status === 400, 'Closing a complaint requires a note');
+  check((await request(submissionPath, a, { revision: 1, status: 'resolved', note: 'Reviewed the fictional issue.' }, 'PATCH')).status === 200, 'Complaint resolution is saved');
+  check((await request(submissionPath, a, { revision: 1, status: 'dismissed', note: 'Stale review' }, 'PATCH')).status === 409, 'Concurrent stale review rejected');
+  await request('/api/team', a, { email: manager.email, role: 'manager', status: 'active', campaignIds: [] });
+  check((await request(submissionPath, manager)).status === 404, 'Unassigned manager cannot read responses');
+  await request('/api/team', a, { email: manager.email, role: 'manager', status: 'active', campaignIds: [formCampaign._id] });
+  check((await request(submissionPath, manager)).status === 200, 'Assigned manager can read responses');
+  check((await request('/api/submissions?workflow=complaint', manager)).data.total === 2, 'Assigned manager list applies campaign scope');
+  const rsvp = await request(submitPath, null, { action: 'rsvp', publicationRevision: formCampaign.publishedRevision, idempotencyKey: randomUUID(), answers: { name: 'RSVP Guest', attendance: 'Yes', guests: 2, data_consent: true } });
+  check(rsvp.status === 201, 'RSVP is stored without requiring a reward');
+  check((await request('/dashboard/submissions/' + submissionId, a)).data.includes(originalLabel), 'Private detail screen renders historical answers');
+  formCampaign = (await request(formPath, a, { action: 'pause', revision: formCampaign.revision }, 'PATCH')).data;
+  check((await request(submitPath, null, { ...initialPayload, publicationRevision: formCampaign.publishedRevision, idempotencyKey: randomUUID() })).status === 409, 'Paused campaign rejects new responses');
+  const rewardPage = createPage('birthday'); rewardPage.actions.reward = true;
+  let rewardCampaign = (await request('/api/campaigns', a, { page: rewardPage })).data;
+  rewardCampaign = (await request(`/api/campaigns/${rewardCampaign._id}`, a, { action: 'publish', revision: rewardCampaign.revision }, 'PATCH')).data;
+  const verificationPath = `/api/public/campaigns/${rewardCampaign.code}/verification`;
+  const phone = '080' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0');
+  const payload = { action: 'request', phone, consent: true, publicationRevision: rewardCampaign.publishedRevision };
+  check((await request(verificationPath, null, { ...payload, consent: false })).status === 400, 'Phone consent required');
+  const challenge = await request(verificationPath, null, payload);
+  check(challenge.status === 200 && challenge.data.simulatedCode.length === 6, 'Local simulator creates a code');
+  const participant = { cookie: challenge.response.headers.getSetCookie().map(c => c.split(';')[0]).join('; ') };
+  check((await request(verificationPath, participant, payload)).status === 429, 'Repeated code request is limited');
+  const confirmation = { ...payload, action: 'confirm', otp: challenge.data.simulatedCode };
+  check((await request(verificationPath, null, confirmation)).status === 409, 'Code is bound to the requesting browser');
+  check((await request(verificationPath, participant, { ...confirmation, phone: '09012345678' })).status === 409, 'Changing phone cannot reuse verification');
+  check((await request(verificationPath, participant, { ...confirmation, otp: '000000' })).status === 400, 'Incorrect code rejected');
+  const confirmations = await Promise.all([request(verificationPath, participant, confirmation), request(verificationPath, participant, confirmation)]);
+  check(confirmations.filter(r => r.status === 200).length === 1, 'Concurrent confirmations consume code exactly once');
+  check((await request(verificationPath, participant, confirmation)).status === 409, 'Consumed code cannot be reused');
+  await db.collection('phoneChallenges').updateOne({ campaignCode: rewardCampaign.code }, { $set: { consumed: false, attempts: 0, expiresAt: new Date(0) } });
+  check((await request(verificationPath, participant, confirmation)).status === 409, 'Expired code rejected before TTL cleanup');
+  await db.collection('phoneChallenges').updateOne({ campaignCode: rewardCampaign.code }, { $set: { attempts: 5, expiresAt: new Date(Date.now() + 300000) } });
+  check((await request(verificationPath, participant, confirmation)).status === 409, 'Attempt ceiling enforced');
+  await request(`/api/campaigns/${rewardCampaign._id}`, a, { action: 'pause', revision: rewardCampaign.revision }, 'PATCH');
+  check((await request(verificationPath, participant, confirmation)).status === 404, 'Paused campaign blocks verification');
+  await db.collection('phoneChallenges').deleteMany({ campaignCode: rewardCampaign.code });
+
+  result = await request('/api/auth/request-password-reset', null, { email: b.email, redirectTo: '/reset-password' }); assert.equal(result.status, 200, JSON.stringify(result.data));
+  const mailFiles = await readdir('.data/mail'); let resetUrl;
+  for (const file of mailFiles) { const mail = JSON.parse(await readFile(`.data/mail/${file}`, 'utf8')); if (mail.to === b.email) { resetUrl = mail.text.match(/https?:\/\/\S+/)[0]; await unlink(`.data/mail/${file}`); } }
+  assert.ok(resetUrl, 'Local recovery email exists');
+  const redirect = await fetch(resetUrl, { redirect: 'manual' }); const token = new URL(redirect.headers.get('location'), origin).searchParams.get('token'); assert.ok(token);
+  const reset = await request('/api/auth/reset-password', null, { token, newPassword: randomUUID() + '!Cd4' }); assert.equal(reset.status, 200, JSON.stringify(reset.data));
+  check((await request('/api/campaigns', b)).status === 401, 'Password reset revokes prior sessions');
+  check((await request('/api/auth/reset-password', null, { token, newPassword: randomUUID() + '!Ef5' })).status !== 200, 'Recovery token cannot be reused');
+  await request('/api/auth/sign-out', a, {}); check((await request('/api/campaigns', a)).status === 401, 'Sign out revokes session');
+  console.log(`Passed ${checks} integration checks across two isolated organizations, manager access, publication, QR and recovery.`);
+} finally {
+  const assets = await db.collection('assets').find({ organizationId: { $in: organizations } }).toArray();
+  for (const asset of assets) if (asset.storage === 'local') await unlink(`.data/assets/${asset._id}.webp`).catch(() => {});
+  for (const name of ['campaigns', 'campaignVersions', 'memberships', 'audit', 'assets', 'submissions']) await db.collection(name).deleteMany({ organizationId: { $in: organizations } });
+  await db.collection('organizations').deleteMany({ _id: { $in: organizations } });
+  await db.collection('platformRoles').deleteMany({ userId: { $in: users } });
+  await db.collection('platformAudit').deleteMany({ actorId: { $in: users } });
+  const userRecords = await db.collection('user').find({ email: { $in: emails } }).toArray(); const ids = userRecords.map(u => u._id);
+  for (const name of ['session', 'account']) await db.collection(name).deleteMany({ userId: { $in: [...ids, ...users] } });
+  await db.collection('user').deleteMany({ _id: { $in: ids } });
+  await client.close();
+}
+

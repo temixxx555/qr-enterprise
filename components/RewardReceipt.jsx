@@ -1,0 +1,9 @@
+'use client';
+import { useState } from 'react';
+import { Button } from './ui';
+const descriptions = { review: 'Your request is waiting for organizer review. Its test budget is reserved.', queued: 'Your test reward is queued. Its budget is reserved.', pending: 'The simulator is still processing. Your reservation is held.', unknown: 'The outcome is not yet known. The reservation stays held while the worker checks the original transaction.', succeeded: 'The simulator confirmed success. No real airtime was sent.', failed: 'The simulator confirmed failure. The reserved budget was released.', reversed: 'The simulated reward was reversed and its budget returned.', rejected: 'The organizer declined this request. Its reserved budget was released.' };
+export default function RewardReceipt({ initial }) {
+  const [receipt, setReceipt] = useState(initial); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function refresh() { setBusy(true); setError(''); try { const response = await fetch(`/api/public/receipts/${receipt.id}`, { cache: 'no-store' }); const data = await response.json(); if (!response.ok) throw new Error(data.error); setReceipt(data); } catch (error) { setError(error.message); } finally { setBusy(false); } }
+  return <section className="panel"><p className="eyebrow">SIMULATED REWARD RECEIPT</p><h1>{receipt.status.replaceAll('_', ' ')}</h1><p role="status">{descriptions[receipt.status]}</p><p><strong>₦{(receipt.amountMinor / 100).toLocaleString('en-NG')} · {receipt.network}</strong></p><p className="muted">Receipt: {receipt.id}</p><p>No real SMS, airtime or money is sent. One request is allowed per verified phone for this campaign, including failed or declined requests.</p>{error && <p role="alert">{error}</p>}<Button onClick={refresh} disabled={busy}>{busy ? 'Checking…' : 'Refresh status'}</Button><p><a href={`/receipt/${receipt.id}`}>Open private receipt page</a></p></section>;
+}

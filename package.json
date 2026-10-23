@@ -1,0 +1,43 @@
+{
+  "name": "enterpriseqr",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "lint": "eslint .",
+    "test": "node --test tests/*.test.mjs",
+    "db:local": "node scripts/local-database.mjs",
+    "setup:local": "node scripts/setup-local.mjs",
+    "dev:qa": "node scripts/qa-server.mjs",
+    "test:integration": "node scripts/run-integration.mjs",
+    "db:check": "node --env-file=.env.local scripts/check-database.mjs",
+    "worker:qa": "node scripts/reward-worker.mjs --qa",
+    "worker": "node scripts/reward-worker.mjs",
+    "test:rewards": "node scripts/check-rewards.mjs",
+    "deploy:check": "node scripts/deployment-check.mjs",
+    "test:backup": "node scripts/backup-rehearsal.mjs",
+    "vtpass:check": "node scripts/vtpass-sandbox-check.mjs",
+    "test:operations": "node scripts/check-operations.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1145.0",
+    "better-auth": "^1.7.7",
+    "lucide-react": "^0.468.0",
+    "mongodb": "^7.7.0",
+    "mongodb-memory-server": "^11.3.0",
+    "next": "16.3.8",
+    "nodemailer": "^10.0.13",
+    "qrcode": "^1.5.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "^4"
+  }
+}
