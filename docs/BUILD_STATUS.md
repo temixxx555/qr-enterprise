@@ -1,4 +1,20 @@
-# Build status — October 23, 2026
+# Build status — October 30, 2026
+
+## October 30, 2026 — Feeding Program implementation started
+
+Owner confirmed Cloudinary for all MVP image/file storage (no S3) and Resend instead of SMTP, and asked to begin Feeding Program development. This update records code changes from October 30; checks below are in progress and must not be confused with the older October 2 test evidence.
+
+- Added an initial Feeding Program management/editor surface, stable public program route/QR download, immutable published snapshots, public household application with consent and private receipt fragment, reviewer decisions, private opaque credential fragment/QR page, Cloudinary image adapter, and staff check/confirm endpoints and camera-capable interface.
+- Added MongoDB collections/indexes for programs, applications, credentials, entitlements, redemptions and rate limits. Server authorization currently reuses existing owner/admin membership roles; scanner roles and program assignments are not yet implemented.
+- Migrated image storage code to Cloudinary authenticated assets; account/recovery mail uses Resend. Removed direct S3 and Nodemailer package dependencies. `.env.example` and deployment preflight now require Cloudinary and Resend.
+- `npm run lint` passed after the first implementation batch. `npm run build` passed and listed the new route tree. These checks do not establish working Cloudinary/Resend connectivity or complete feature acceptance.
+- Latest verification after the current changes: `npm run lint` passed; `npm test` passed all 27 unit tests (including three Feeding Program policy/schedule checks); `npm run build` passed under Next.js 16.4.3; `npm audit --omit=dev` found zero vulnerabilities.
+- `npm run deploy:check` fails safely as expected: Resend and Cloudinary settings are missing, `APP_MODE` is not production, and `APP_URL` is not a final HTTPS origin. No secret values were printed.
+- No Cloudinary/Resend credentials were inspected or supplied; upload/email integration acceptance is pending. No provider, public deployment, or real food distribution has occurred.
+- Feeding Program gaps still open: collection camera support has not been browser-tested; applicant phone verification is intentionally fail-closed until an OTP provider is configured; hard eligibility rules beyond approval/schedule/capacity/allowance are not implemented; fine-grained staff/reviewer roles and program assignments remain; robust per-person/per-child concurrent allowance testing, manual exception workflow, participant allowance history, retention/privacy review, and Cloudinary/Resend hosted acceptance remain.
+- Existing local preview images remain readable as a temporary compatibility path. New uploads require Cloudinary; migration of any existing stored assets into Cloudinary awaits configured credentials and acceptance.
+- Next.js and `eslint-config-next` were upgraded to 16.4.3 to address the critical advisory reported by `npm audit`; `npm audit --omit=dev` now reports zero vulnerabilities. The matching Next.js 16.4.3 route/page/client guides were read before continuing edits.
+- Overall original phase position remains Phases 0–6 locally implemented, Phase 8 locally implemented, Phase 7 provider acceptance blocked, Phase 9 broader testing open, and Phase 10 hosted acceptance/deployment open. No production release was requested or made.
 
 ## Status check — October 23
 

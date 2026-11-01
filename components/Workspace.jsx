@@ -4,10 +4,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { authClient } from '@/lib/auth-client';
-import { ArrowUpRight, Building2, ChartNoAxesCombined, ChevronDown, CircleHelp, Gift, LayoutDashboard, Menu, MessageSquare, Plus, QrCode, Settings2, ShieldCheck, Users, X } from 'lucide-react';
+import { ArrowUpRight, Building2, ChartNoAxesCombined, ChevronDown, CircleHelp, Gift, LayoutDashboard, Menu, MessageSquare, Plus, QrCode, Settings2, ShieldCheck, Users, X, Utensils } from 'lucide-react';
 
 const navigation = [
-  ['Overview', '/dashboard', LayoutDashboard], ['Campaigns', '/dashboard/campaigns', QrCode],
+  ['Overview', '/dashboard', LayoutDashboard], ['Campaigns', '/dashboard/campaigns', QrCode], ['Feeding Programs', '/dashboard/feeding-programs', Utensils], ['Food collection', '/dashboard/feeding-scan', Utensils],
   ['Organizations', '/dashboard/organizations', Building2], ['Submissions', '/dashboard/submissions', MessageSquare],
   ['Fulfillment', '/dashboard/fulfillment', Gift], ['Analytics', '/dashboard/analytics', ChartNoAxesCombined],
 ];

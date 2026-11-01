@@ -6,6 +6,10 @@ EnterpriseQR turns stable QR links into branded engagement campaigns for organiz
 
 Each campaign is also a configurable mini webpage for an individual, celebration, leader, community or business. It can showcase a cover banner, profile picture, introduction, main website, photo galleries, linked image posters, event invitations and social links. Text, announcements, events, links, galleries and banners can be reordered, duplicated, hidden or removed. Appearance includes background, accent colour, heading style and header alignment.
 
+## Feeding Program QR type
+
+An organization can create a Feeding Program with a stable public QR for program information and household applications. Applications are manually reviewed by default. Approval issues a separate private opaque participant credential; authenticated distribution staff select the program, site and serving session, check current eligibility/allowance, then confirm a handover. The public program QR never grants food or records a redemption. Applications, household members, credential hashes and redemptions are private organization-owned records. The initial implementation is under active development; detailed gaps and external acceptance gates are in `docs/BUILD_STATUS.md`.
+
 Page content is independent of actions. Owners can enable RSVP, messages and optional airtime rewards, customize button labels or disable every action. A birthday page can combine an invitation and a reward; a leader page can introduce the person, priorities and public events. Production reward eligibility and funding remain separate server-controlled features.
 
 ## Roles

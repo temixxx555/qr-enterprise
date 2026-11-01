@@ -1,25 +1,222 @@
-'use client';
-import { useEffect, useState } from 'react';
-import { reportDates } from '@/lib/reporting.mjs';
-import { ExportButton, ReportFilters } from './ReportControls';
-import { PageHeading } from './ui';
-const money = value => new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(value / 100);
-const percent = value => value === null ? '—' : `${value.toFixed(1)}%`;
+"use client";
+import { useEffect, useState } from "react";
+import { reportDates } from "@/lib/reporting.mjs";
+import { ExportButton, ReportFilters } from "./ReportControls";
+import { PageHeading } from "./ui";
+const money = (value) =>
+  new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN" }).format(
+    value / 100,
+  );
+const percent = (value) => (value === null ? "—" : `${value.toFixed(1)}%`);
 export default function Analytics({ campaigns, compact = false }) {
-  const [filters, setFilters] = useState(() => { const { from, to } = reportDates(); return { campaign: '', from, to }; });
-  const [data, setData] = useState(null); const [error, setError] = useState('');
+  const [filters, setFilters] = useState(() => {
+    const { from, to } = reportDates();
+    return { campaign: "", from, to };
+  });
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
   useEffect(() => {
-    const controller = new AbortController(); fetch(`/api/analytics?${new URLSearchParams(filters)}`, { signal: controller.signal, cache: 'no-store' }).then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.error); setData(result); setError(''); }).catch(error => { if (error.name !== 'AbortError') { setData(null); setError(error.message); } }); return () => controller.abort();
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/analytics?${new URLSearchParams(filters)}`,
+          {
+            signal: controller.signal,
+            cache: "no-store",
+          },
+        );
+        const result = await response.json();
+        if (controller.signal.aborted) return;
+        if (!response.ok) throw new Error(result.error);
+        setData(result);
+        setError("");
+      } catch (err) {
+        if (controller.signal.aborted) return; // superseded or unmounted: not a real failure
+        setData(null);
+        setError(err.message);
+      }
+    })();
+    return ;
   }, [filters]);
-  function update(key, value) { setData(null); setFilters(current => ({ ...current, [key]: value })); }
-  return <><PageHeading eyebrow="RECORDED CAMPAIGN ACTIVITY" title={compact ? 'Workspace activity' : 'Analytics'} description="Actual stored records. All reward amounts are test values; no real airtime has been sent."><ExportButton kind="summary" filters={filters}>Export summary</ExportButton></PageHeading><ReportFilters campaigns={campaigns} value={filters} onChange={update} />{error && <p role="alert" className="notice">{error}</p>}{!data && !error && <p role="status">Loading activity…</p>}{data && <><div className="analytics-grid">{[
-    ['Recorded visits', data.visits, 'Public page loads, including shared links. Not a count of physical QR scans.'],
-    ['Estimated browsers', data.estimatedVisitors, 'Distinct browser cookies in the selected visit period. Not unique people.'],
-    ['Responses', data.submissions, 'Responses created within the selected dates.'],
-    ['Visit conversion', percent(data.conversionPercent), `${data.responseVisits} of ${data.visits} selected visits have a linked response by report time. Older unlinked responses are excluded.`],
-    ['Reward claims', data.claims, 'Claims created within the selected dates, including unresolved claims.'],
-    ['Verified identities', data.verifiedParticipants, 'Distinct phone identities on these claims. Verification is simulated.'],
-    ['Claim success', percent(data.claimSuccessPercent), `${data.terminalClaims} final provider outcomes. Pending, unknown, review, queued and rejected claims are excluded; reversed claims count as unsuccessful.`],
-    ['Net test spend', money(data.netSpendMinor), 'Settlement minus reversal ledger entries dated within the range. May be negative when earlier spend is reversed.'],
-  ].map(([label, value, description]) => <section className="panel metric-card" key={label}><h2>{label}</h2><strong>{value}</strong><p>{description}</p></section>)}</div><section className="panel account-card"><h2>Budget & queue now</h2><p>Current totals for the selected campaigns, across all dates.</p><div className="reward-summary"><span>Available <strong>{money(data.budget.availableMinor)}</strong></span><span>Reserved <strong>{money(data.budget.reservedMinor)}</strong></span><span>Net spent <strong>{money(data.budget.spentMinor)}</strong></span><span>Uncertain outcomes <strong>{data.unsettled}</strong></span></div><p>{data.queue.reduce((sum, q) => sum + q.count, 0)} unfinished jobs. Allocation: {money(data.budget.allocatedMinor)}.</p></section>{!compact && <><section className="panel account-card"><h2>Daily activity</h2><p>Recorded visits and responses by their creation day in Lagos. Days with no activity are omitted.</p>{!data.dailyVisits.length && !data.dailySubmissions.length ? <p>No recorded activity in this period.</p> : <div className="report-table-wrap"><table className="report-table"><thead><tr><th>Day</th><th>Visits</th><th>Responses</th></tr></thead><tbody>{[...new Set([...data.dailyVisits, ...data.dailySubmissions].map(v => v._id))].sort().map(day => <tr key={day}><td>{day}</td><td>{data.dailyVisits.find(v => v._id === day)?.count || 0}</td><td>{data.dailySubmissions.find(v => v._id === day)?.count || 0}</td></tr>)}</tbody></table></div>}</section><section className="panel account-card"><h2>Claim states</h2>{data.claims ? <ul>{Object.entries(data.claimStates).map(([state, count]) => <li key={state}>{state}: {count}</li>)}</ul> : <p>No claims were created in this period.</p>}<div className="button-row"><ExportButton kind="claims" filters={filters}>Export claims</ExportButton><ExportButton kind="ledger" filters={filters}>Export ledger</ExportButton></div></section></>}<p className="muted">Generated {new Date(data.generatedAt).toLocaleString('en-GB', { timeZone: 'Africa/Lagos' })} (Lagos). Visits are recorded from this release onward; historical visits are not estimated.</p></>}</>;
+  function update(key, value) {
+    setData(null);
+    setFilters((current) => ({ ...current, [key]: value }));
+  }
+  return (
+    <>
+      <PageHeading
+        eyebrow='RECORDED CAMPAIGN ACTIVITY'
+        title={compact ? "Workspace activity" : "Analytics"}
+        description='Actual stored records. All reward amounts are test values; no real airtime has been sent.'
+      >
+        <ExportButton kind='summary' filters={filters}>
+          Export summary
+        </ExportButton>
+      </PageHeading>
+      <ReportFilters campaigns={campaigns} value={filters} onChange={update} />
+      {error && (
+        <p role='alert' className='notice'>
+          {error}
+        </p>
+      )}
+      {!data && !error && <p role='status'>Loading activity…</p>}
+      {data && (
+        <>
+          <div className='analytics-grid'>
+            {[
+              [
+                "Recorded visits",
+                data.visits,
+                "Public page loads, including shared links. Not a count of physical QR scans.",
+              ],
+              [
+                "Estimated browsers",
+                data.estimatedVisitors,
+                "Distinct browser cookies in the selected visit period. Not unique people.",
+              ],
+              [
+                "Responses",
+                data.submissions,
+                "Responses created within the selected dates.",
+              ],
+              [
+                "Visit conversion",
+                percent(data.conversionPercent),
+                `${data.responseVisits} of ${data.visits} selected visits have a linked response by report time. Older unlinked responses are excluded.`,
+              ],
+              [
+                "Reward claims",
+                data.claims,
+                "Claims created within the selected dates, including unresolved claims.",
+              ],
+              [
+                "Verified identities",
+                data.verifiedParticipants,
+                "Distinct phone identities on these claims. Verification is simulated.",
+              ],
+              [
+                "Claim success",
+                percent(data.claimSuccessPercent),
+                `${data.terminalClaims} final provider outcomes. Pending, unknown, review, queued and rejected claims are excluded; reversed claims count as unsuccessful.`,
+              ],
+              [
+                "Net test spend",
+                money(data.netSpendMinor),
+                "Settlement minus reversal ledger entries dated within the range. May be negative when earlier spend is reversed.",
+              ],
+            ].map(([label, value, description]) => (
+              <section className='panel metric-card' key={label}>
+                <h2>{label}</h2>
+                <strong>{value}</strong>
+                <p>{description}</p>
+              </section>
+            ))}
+          </div>
+          <section className='panel account-card'>
+            <h2>Budget & queue now</h2>
+            <p>Current totals for the selected campaigns, across all dates.</p>
+            <div className='reward-summary'>
+              <span>
+                Available <strong>{money(data.budget.availableMinor)}</strong>
+              </span>
+              <span>
+                Reserved <strong>{money(data.budget.reservedMinor)}</strong>
+              </span>
+              <span>
+                Net spent <strong>{money(data.budget.spentMinor)}</strong>
+              </span>
+              <span>
+                Uncertain outcomes <strong>{data.unsettled}</strong>
+              </span>
+            </div>
+            <p>
+              {data.queue.reduce((sum, q) => sum + q.count, 0)} unfinished jobs.
+              Allocation: {money(data.budget.allocatedMinor)}.
+            </p>
+          </section>
+          {!compact && (
+            <>
+              <section className='panel account-card'>
+                <h2>Daily activity</h2>
+                <p>
+                  Recorded visits and responses by their creation day in Lagos.
+                  Days with no activity are omitted.
+                </p>
+                {!data.dailyVisits.length && !data.dailySubmissions.length ? (
+                  <p>No recorded activity in this period.</p>
+                ) : (
+                  <div className='report-table-wrap'>
+                    <table className='report-table'>
+                      <thead>
+                        <tr>
+                          <th>Day</th>
+                          <th>Visits</th>
+                          <th>Responses</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          ...new Set(
+                            [...data.dailyVisits, ...data.dailySubmissions].map(
+                              (v) => v._id,
+                            ),
+                          ),
+                        ]
+                          .sort()
+                          .map((day) => (
+                            <tr key={day}>
+                              <td>{day}</td>
+                              <td>
+                                {data.dailyVisits.find((v) => v._id === day)
+                                  ?.count || 0}
+                              </td>
+                              <td>
+                                {data.dailySubmissions.find(
+                                  (v) => v._id === day,
+                                )?.count || 0}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+              <section className='panel account-card'>
+                <h2>Claim states</h2>
+                {data.claims ? (
+                  <ul>
+                    {Object.entries(data.claimStates).map(([state, count]) => (
+                      <li key={state}>
+                        {state}: {count}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>No claims were created in this period.</p>
+                )}
+                <div className='button-row'>
+                  <ExportButton kind='claims' filters={filters}>
+                    Export claims
+                  </ExportButton>
+                  <ExportButton kind='ledger' filters={filters}>
+                    Export ledger
+                  </ExportButton>
+                </div>
+              </section>
+            </>
+          )}
+          <p className='muted'>
+            Generated{" "}
+            {new Date(data.generatedAt).toLocaleString("en-GB", {
+              timeZone: "Africa/Lagos",
+            })}{" "}
+            (Lagos). Visits are recorded from this release onward; historical
+            visits are not estimated.
+          </p>
+        </>
+      )}
+    </>
+  );
 }

@@ -1,14 +1,166 @@
-'use client';
-import { ExportButton } from './ReportControls';
-import { reportDates } from '@/lib/reporting.mjs';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { Button } from './ui';
+"use client";
+import { ExportButton } from "./ReportControls";
+import { reportDates } from "@/lib/reporting.mjs";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Button } from "./ui";
 export default function SubmissionInbox({ campaigns }) {
-  const [filters, setFilters] = useState(() => { const { from, to } = reportDates(); return { campaign: '', workflow: '', status: '', page: 1, from, to }; }); const [result, setResult] = useState(null); const [error, setError] = useState('');
-  useEffect(() => { const controller = new AbortController(); const query = new URLSearchParams(Object.fromEntries(Object.entries(filters).map(([key, value]) => [key, String(value)]))); fetch(`/api/submissions?${query}`, { signal: controller.signal }).then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error); setResult(data); setError(''); }).catch(e => { if (e.name !== 'AbortError') setError(e.message); }); return () => controller.abort(); }, [filters]);
-  function filter(key, value) { setResult(null); setFilters(current => ({ ...current, [key]: value, page: 1 })); }
-  function navigate(page) { setResult(null); setFilters(current => ({ ...current, page })); }
-  return <section className="panel account-card"><h1>Responses & RSVP</h1><p>Responses from your published forms. Open one to read its answers and review history. Times are shown in Africa/Lagos.</p><div className="submission-filters"><label>Campaign<select value={filters.campaign} onChange={e => filter('campaign', e.target.value)}><option value="">All permitted campaigns</option>{campaigns.map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label><label>Response type<select value={filters.workflow} onChange={e => filter('workflow', e.target.value)}><option value="">All types</option>{['feedback', 'rsvp', 'survey', 'complaint'].map(w => <option key={w} value={w}>{w}</option>)}</select></label><label>Review state<select value={filters.status} onChange={e => filter('status', e.target.value)}><option value="">All states</option>{['new', 'reviewed', 'archived', 'in_review', 'resolved', 'dismissed'].map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}</select></label><label>From (Lagos)<input type="date" value={filters.from} onChange={event => filter('from', event.target.value)} /></label><label>Through (Lagos)<input type="date" value={filters.to} onChange={event => filter('to', event.target.value)} /></label></div><ExportButton kind="submissions" filters={filters}>Export matching responses</ExportButton>{error && <p role="alert">{error}</p>}{!result && !error && <p role="status">Loading responses…</p>}{result && <><p>{result.total} matching responses</p>{result.items.map(item => <div className="organization-row" key={item._id}><span><Link href={`/dashboard/submissions/${item._id}`}><strong>{item.form.title}</strong></Link><small>{item.campaignName} · {item.workflow}</small></span><span>{item.status.replace('_', ' ')}<small>{new Date(item.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Lagos' })}</small></span></div>)}{!result.items.length && <p>No responses match these filters yet.</p>}<div className="button-row"><Button variant="secondary" disabled={filters.page === 1} onClick={() => navigate(filters.page - 1)}>Previous</Button><span>Page {filters.page}</span><Button variant="secondary" disabled={filters.page * 25 >= result.total} onClick={() => navigate(filters.page + 1)}>Next</Button></div></>}</section>;
+  const [filters, setFilters] = useState(() => {
+    const { from, to } = reportDates();
+    return { campaign: "", workflow: "", status: "", page: 1, from, to };
+  });
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = new URLSearchParams(
+      Object.fromEntries(
+        Object.entries(filters).map(([key, value]) => [key, String(value)]),
+      ),
+    );
+    fetch(`/api/submissions?${query}`, { signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        setResult(data);
+        setError("");
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") return;
+        setError(e.message);
+      });
+    return () => controller.abort();
+  }, [filters]);
+  function filter(key, value) {
+    setResult(null);
+    setFilters((current) => ({ ...current, [key]: value, page: 1 }));
+  }
+  function navigate(page) {
+    setResult(null);
+    setFilters((current) => ({ ...current, page }));
+  }
+  return (
+    <section className='panel account-card'>
+      <h1>Responses & RSVP</h1>
+      <p>
+        Responses from your published forms. Open one to read its answers and
+        review history. Times are shown in Africa/Lagos.
+      </p>
+      <div className='submission-filters'>
+        <label>
+          Campaign
+          <select
+            value={filters.campaign}
+            onChange={(e) => filter("campaign", e.target.value)}
+          >
+            <option value=''>All permitted campaigns</option>
+            {campaigns.map((c) => (
+              <option value={c.id} key={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Response type
+          <select
+            value={filters.workflow}
+            onChange={(e) => filter("workflow", e.target.value)}
+          >
+            <option value=''>All types</option>
+            {["feedback", "rsvp", "survey", "complaint"].map((w) => (
+              <option key={w} value={w}>
+                {w}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Review state
+          <select
+            value={filters.status}
+            onChange={(e) => filter("status", e.target.value)}
+          >
+            <option value=''>All states</option>
+            {[
+              "new",
+              "reviewed",
+              "archived",
+              "in_review",
+              "resolved",
+              "dismissed",
+            ].map((s) => (
+              <option key={s} value={s}>
+                {s.replace("_", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          From (Lagos)
+          <input
+            type='date'
+            value={filters.from}
+            onChange={(event) => filter("from", event.target.value)}
+          />
+        </label>
+        <label>
+          Through (Lagos)
+          <input
+            type='date'
+            value={filters.to}
+            onChange={(event) => filter("to", event.target.value)}
+          />
+        </label>
+      </div>
+      <ExportButton kind='submissions' filters={filters}>
+        Export matching responses
+      </ExportButton>
+      {error && <p role='alert'>{error}</p>}
+      {!result && !error && <p role='status'>Loading responses…</p>}
+      {result && (
+        <>
+          <p>{result.total} matching responses</p>
+          {result.items.map((item) => (
+            <div className='organization-row' key={item._id}>
+              <span>
+                <Link href={`/dashboard/submissions/${item._id}`}>
+                  <strong>{item.form.title}</strong>
+                </Link>
+                <small>
+                  {item.campaignName} · {item.workflow}
+                </small>
+              </span>
+              <span>
+                {item.status.replace("_", " ")}
+                <small>
+                  {new Date(item.createdAt).toLocaleString("en-GB", {
+                    timeZone: "Africa/Lagos",
+                  })}
+                </small>
+              </span>
+            </div>
+          ))}
+          {!result.items.length && <p>No responses match these filters yet.</p>}
+          <div className='button-row'>
+            <Button
+              variant='secondary'
+              disabled={filters.page === 1}
+              onClick={() => navigate(filters.page - 1)}
+            >
+              Previous
+            </Button>
+            <span>Page {filters.page}</span>
+            <Button
+              variant='secondary'
+              disabled={filters.page * 25 >= result.total}
+              onClick={() => navigate(filters.page + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        </>
+      )}
+    </section>
+  );
 }
-

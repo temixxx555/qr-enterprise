@@ -90,3 +90,11 @@ The owner explicitly chose deployment preparation without publication and will a
 Rechecked the private configuration by presence only: VTPass sandbox enablement and keys are absent. The deployment preflight still reports non-production mode, no final HTTPS APP_URL, and missing SMTP sender/host and S3 bucket/region. No credential values were printed. The Docker CLI executable is now present, but no image build or container run has been verified. No deployment was performed.
 
 The working folder had no Git metadata. At the owner's request, local Git was initialized and the source/documentation was committed as `e8d614a` (`Add EnterpriseQR application and handover documentation`). `.env.local`, `.data`, `.next`, `.next-qa` and `node_modules` are excluded by `.gitignore`; no remote is configured. Recorded automated test results remain October 2 evidence and were not rerun for this documentation update.
+
+## October 30, 2026 — Feeding Program and service choices
+
+- Owner requested a Feeding Program QR type with separate public application and private participant credentials. Implementation began after the plan review.
+- Owner selected Cloudinary for all MVP images/files and explicitly declined S3 for now. Assets use Cloudinary authenticated storage; application/household data and opaque credential hashes remain in MongoDB. Sensitive documents are not collected in this initial form.
+- Owner selected Resend instead of SMTP for account and recovery mail. Credentials must be configured privately; no secret was supplied in chat.
+- Manual application review, household QR ownership, authenticated staff scanning and staff-confirmed redemption are the defaults. Auto-approval remains off.
+- Local code now includes initial program/application/review/credential/redemption services and pages. Credential rotation/recovery, browser camera scanning, role granularity, OTP verification, deep integration coverage and acceptance remain incomplete; see BUILD_STATUS.md.

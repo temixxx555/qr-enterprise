@@ -1,6 +1,6 @@
 # EnterpriseQR — Complete Product and Technical Handbook
 
-**Reviewed October 23, 2026 · Africa/Lagos**  
+**Reviewed October 30, 2026 · Africa/Lagos**  
 Project: `C:\Users\HP\OneDrive\Desktop\enterpriseqr`  
 Technology: Next.js App Router, JavaScript/JSX, React and MongoDB.  
 Status: working local application, simulated rewards and VTPass sandbox adapter; deployment preparation only.
@@ -36,6 +36,10 @@ The complete test suite was not rerun for this documentation update. Test result
 21. Owner decisions and continuation guidance
 
 ## 1. Completion assessment
+
+### Current update — Feeding Program and storage/email choice
+
+The owner has selected Cloudinary for MVP image/file storage and Resend for hosted account/recovery email; S3 is not in use. An initial Feeding Program slice now includes program setup, immutable public snapshots, public household applications/receipts, review decisions, opaque participant credentials, and staff scan/check/confirm surfaces. This slice has not yet passed an isolated database end-to-end suite, browser camera test, or Cloudinary/Resend service acceptance. See `docs/BUILD_STATUS.md` for exact remaining gates. The auth roles currently support owner/admin/manager only; the new private applicant records and scanner are conservatively owner/admin restricted until finer roles are built.
 
 ### Can you say “90% done”?
 
@@ -239,9 +243,7 @@ A QR download does not publish a draft. Unavailable campaigns do not allow new p
 
 The server decodes raster images, caps input pixels at 20 million, rotates appropriately, resizes inside 1400 × 1400 and re-encodes WebP. Re-encoding removes original metadata. Image identity combines organization identity with content, allowing organization-local reuse.
 
-Local images live under `.data/assets`; hosted images require private S3-compatible storage. App routes expose available published images and authorize private ones. If an image is used by another available published campaign, that publication may still make it public.
-
-**The current S3 adapter explicitly supplies access-key and secret-key credentials.** Configure `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`; do not assume workload-identity fallback exists. Actual hosted upload/read and policy behavior are unverified.
+New image uploads are written to Cloudinary as authenticated assets; the application server authorizes access before generating a signed delivery URL and streams the image. Cloudinary credentials are server-only. Previously stored local preview images remain temporarily readable to preserve existing data, but migration of any old assets is pending configured Cloudinary credentials. No S3 adapter is used in the current code. Cloudinary upload/delivery has not yet been accepted against a configured account.
 
 Storage quotas, orphan-image cleanup and lifecycle retention are not implemented. An upload followed by a failed campaign save can leave an unused asset requiring future cleanup.
 
@@ -608,10 +610,8 @@ Open `http://127.0.0.1:3000/login`. If existing configuration uses Atlas/cloud M
 | `APP_URL` | Exact origin for auth, request checks, links and QR |
 | `MONGODB_URI`, `MONGODB_DB` | Private replica-set connection and database |
 | `BETTER_AUTH_SECRET` | Stable private auth/HMAC secret; at least 32 characters for preflight |
-| `SMTP_HOST`, `SMTP_PORT` | Account mail server; default 587, secure SMTP on 465 |
-| `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | Mail authentication and sender |
-| `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT` | Private storage bucket/region and optional compatible endpoint |
-| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Explicit credentials used by current storage adapter |
+| `RESEND_API_KEY`, `MAIL_FROM` | Hosted account and recovery email through Resend |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Authenticated image uploads and server-authorized image delivery; no S3 |
 | `VTPASS_SANDBOX_ENABLED` | Explicit sandbox opt-in |
 | `VTPASS_SANDBOX_API_KEY`, `VTPASS_SANDBOX_SECRET_KEY` | Private sandbox credentials |
 | `NEXT_DIST_DIR` | Alternative output directory used by QA |
@@ -620,7 +620,7 @@ Keep secrets out of JSX, `NEXT_PUBLIC_*`, source archives, reports and chat. `.e
 
 ### Accounts and email
 
-Passwords require at least 12 characters. Sessions expire after 24 hours, with database-backed checks and cookie session caching disabled. Recovery tokens expire after 30 minutes; password reset revokes sessions. Local account mail is stored under `.data/mail`; hosted mode requires HTTPS and SMTP with verified-email signup. The current SMTP implementation requires TLS and uses configured authentication.
+Passwords require at least 12 characters. Sessions expire after 24 hours, with database-backed checks and cookie session caching disabled. Recovery tokens expire after 30 minutes; password reset revokes sessions. Local account mail is stored under `.data/mail`; hosted mode requires HTTPS and Resend configuration with verified-email signup. Resend delivery has not been service-tested yet.
 
 ### Command reference
 

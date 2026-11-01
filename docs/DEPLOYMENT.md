@@ -1,6 +1,6 @@
 # Deployment and handover
 
-Updated October 23, 2026. **Preparation only: the user explicitly requested no publication.** No host or public domain has been provisioned. The app can be prepared as a campaign/forms workspace; production phone verification and reward delivery remain disabled.
+Updated October 30, 2026. **Preparation only: no publication was requested.** No host or public domain has been provisioned. Feeding Program development is underway; production phone verification and reward delivery remain disabled.
 
 ## Package
 
@@ -22,12 +22,11 @@ Use separate staging and production databases, private buckets, credentials and 
 | `APP_URL` | Final HTTPS origin, set before generating printed QR codes |
 | `MONGODB_URI`, `MONGODB_DB` | MongoDB replica set and dedicated database; least-privilege database user |
 | `BETTER_AUTH_SECRET` | Stable random secret of at least 32 characters; preserve across replicas/restarts |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | Chosen email service; verify signup and recovery delivery |
-| `S3_BUCKET`, `S3_REGION` | Private object storage; use provider-specific endpoint/credentials where needed |
-| `S3_ENDPOINT`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | Optional compatible endpoint; access key and secret are explicitly used by the current adapter. Host-identity fallback is not implemented. |
+| `RESEND_API_KEY`, `MAIL_FROM` | Resend account/recovery mail; verify sender domain and delivery |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary authenticated image storage and server-authorized delivery; no S3 is used |
 | `VTPASS_SANDBOX_ENABLED` | `false` for hosted production; keep sandbox secrets in local test configuration |
 
-The October 23 local preflight fails because hosted SMTP, bucket, HTTPS origin and production mode are not configured. A passing preflight checks configuration shape only, not connectivity or readiness. The check outputs missing variable names and issue descriptions, not credential values.
+The deployment preflight requires Resend, Cloudinary, HTTPS origin and production mode. It reports variable names only, not credential values. A passing preflight checks configuration shape only, not connectivity or readiness.
 
 ## Release procedure for a future authorized deployment
 
@@ -37,7 +36,7 @@ The October 23 local preflight fails because hosted SMTP, bucket, HTTPS origin a
 4. Build the web image with `docker build --target web -t enterpriseqr:RELEASE .`. The Docker build sets production mode for security headers and excludes local secrets. Inject runtime settings through the host; do not bake them into the image.
 5. Route HTTPS traffic to port 3000 behind the host's reverse proxy. Keep MongoDB and the object bucket private. Configure restart policy, resource limits and health checks. Avoid logging request bodies, OTPs, cookies, credentials or form answers.
 6. Initialize/verify the indexes defined in `lib/server/db.mjs`, `reward-common.mjs` and `visits.mjs` through the application initialization paths. New unique indexes must be checked for duplicates on an existing database before rollout; never remove records automatically to force an index build.
-7. Verify email signup, recovery and session revocation; private image upload and published image access; organization isolation; page publication, RSVP/feedback and scoped export; pause/schedule behavior; and a real phone scanning the final-domain QR.
+7. Verify Resend signup/recovery and session revocation; Cloudinary authenticated upload and authorized image delivery; organization isolation; page publication, RSVP/feedback, Feeding Program workflows and scoped export; pause/schedule behavior; and a real phone scanning the final-domain QR.
 8. Only after separate provider implementation and acceptance may a production rewards worker be enabled. The current worker target is not eligible for that step.
 
 Nothing in this checklist was deployed as part of this turn.
@@ -64,4 +63,4 @@ Retain the prior immutable application image and its compatible configuration. S
 
 ## Launch gates still open
 
-VTPass account acceptance; live OTP/bot/delivery implementation; hosted SMTP/S3 and HTTPS acceptance; physical QR scan; container execution; external monitoring and balance alerts; hosted backup restore; broader accessibility/slow-network/load checks; owner-approved privacy, reward, retention/deletion and support policies. No real SMS or airtime has been sent.
+VTPass account acceptance; live OTP/bot/delivery implementation; hosted Resend/Cloudinary and HTTPS acceptance; physical QR scan; container execution; external monitoring and balance alerts; hosted backup restore; broader accessibility/slow-network/load checks; Feeding Program end-to-end/security acceptance; owner-approved privacy, child-data, retention/deletion and support policies. No real SMS or airtime has been sent.
